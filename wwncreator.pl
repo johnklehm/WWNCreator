@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# makewwn.pl
+# wwncreator.pl
 # The Wine World News xml editor/creator.
 #
 # Copyright 2010 Zachary Goldberg
@@ -34,12 +34,12 @@ my $DEFAULT_GOAL       = "spread the Wine news.";
 # script config
 my $BASE_ROOT    = "wwn-creator";
 my $BASE_URL     = "http://klehm.net/$BASE_ROOT";
-my $BASE_PATH    = "/var/www/klehm.net/htdocs/$BASE_ROOT";
+my $BASE_PATH    = "/var/www/localhost/drupal/$BASE_ROOT";
 my $DOWNLOAD_DIR = "$BASE_PATH/download";
 
 # winehq config
 my $WINEHQCONF = {
-    wwnDir => '/var/www/klehm.net/htdocs/winehq/wwn/en',
+    wwnDir => '/var/www/localhost/drupal/winehq/wwn/en',
     url    => 'http://klehm.net/winehq',
     archiveURI => 'http://www.winehq.org/pipermail/wine-devel',
     appdbDumpURI   => 'ftp://ftp.winehq.org/pub/wine',
@@ -48,60 +48,101 @@ my $WINEHQCONF = {
 
 # db config
 my $DBCONF  = {
-    name => 'appdb',
+    name => 'wwn_appdb_stats',
     host => 'localhost',
-    user => 'USER',
-    pw   => 'PASSWORD'
+    user => 'DBUSER',
+    pw   => 'DBPASSWORD'
 };
 
-# FIXME indented xml output
+# FIXME indented xml output that would make compatible patches with old issues
 # libxml tries to indent kind of but screws up sometimes.
 #  probably need to run the completed xml through
 # another library to get something human readable consistently
 my $xmlFormatting = 1;
 
-# FIXME: Should be based on dateTo
-my $dateToday = &ParseDate("today"); 
-my $yearMonDayStr = &UnixDate($dateToday, '%Y%m%d');
+my $dateToday = ParseDate("today"); 
+my $yearMonDayStr = UnixDate($dateToday, '%Y%m%d');
 my $blurbFileName = $yearMonDayStr . "01.xml";
 
 # template for issue name
 my $xmlTempIssueFQN  = "$DOWNLOAD_DIR/wn$yearMonDayStr" . "_XXX.xml";
 my $xmlBlurbFQN = "$DOWNLOAD_DIR/$blurbFileName";
 
+state $br = "<br />";
+
 ############
 ### MAIN ###
 ############
 
-print "Content-Type: text/html\n\n";
-
-state $br = "<br />";
-print qq~
-    <html>
-    <head> 
-    <title>WWN Creator by Zachary Goldberg</title>
-    </head>
-    <body>
-        <center>
-        <h1><a href="makewwn.pl"><font color="black" style="text-decoration: none;">World Wine Newsletter Creator</font></a></h1>
-        $br
-~;
-
-my %FORM = &parse_form();
+my %FORM = parse_env();
 
 given ($FORM{'a'}) {
-    when ('new')      { new_wwn(); }
-    when ('create')   { create_wwn(); edit_wwn(); }
-    when ('save')     { save_wwn();   edit_wwn(); }
-    when ('stat_gen') { stat_gen();   edit_wwn(); }
-    when ('viewDemo') { make_demo(); }
-    default           { choose_wwn(); }
-} 
+    when ('new')      { header(); new_wwn();                footer(); }
+    when ('create')   { header(); create_wwn(); edit_wwn(); footer(); }
+    when ('save')     { header(); save_wwn();   edit_wwn(); footer(); }
+    when ('stats')    { header(); stats_wwn();  edit_wwn(); footer(); }
+    when ('edit')     { header();               edit_wwn(); footer(); }
+    when ('view')     { view_wwn(); }
+    default           { header(); choose_wwn();             footer(); }
+}
 
 ################
 ### END MAIN ###
 ################
 
+
+##
+# Header stuff
+# Mime type, all opening html etc
+#
+sub header {
+
+print "Content-Type: application/xhtml+xml; charset=utf-8\n\n";
+
+print qq~<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head> 
+<title>WWN Creator</title>
+<style type="text/css">/*<![CDATA[*/
+    body {
+        text-align: center;
+    }
+
+    h1 a {
+        text-decoration: none;
+        color: black;
+    }
+
+    ul.undec li {
+        list-style-type: none;
+    }
+
+    hr.long {
+        width: 550px;
+    }
+/*]]>*/</style>
+</head>
+<body>
+    <h1><a href="wwncreator.pl">World Wine News Creator</a></h1>
+    <div id="main">
+~;
+
+}
+
+##
+# Footer stuff
+# Should close everything opened in the header
+#
+sub footer {
+
+print qq~
+    </div>
+</body>
+</html>
+~;
+
+}
 
 ##
 # Get the path name for this issue number
@@ -148,8 +189,9 @@ sub clearTempXMLFiles {
 ##
 # Delete the old issue file and pop in our fresh one.
 #
-sub make_demo {
-    my $issueNum = $FORM{'curIssueNum'};
+sub view_wwn {
+    # guarantee form values are reasonable
+    my $issueNum = forceInt($FORM{'curIssueNum'});
 
     $xmlTempIssueFQN =~ s/XXX/$issueNum/;
     my $xmlWineHQIssueFQN = "$WINEHQCONF->{'wwnDir'}/wn$yearMonDayStr" . "_$issueNum.xml";
@@ -166,20 +208,17 @@ sub make_demo {
     #make sure we can read it on the web
     chmod(0664, $xmlWineHQIssueFQN);
 
-    #TODO: Server side redirect, gotta clean up the output in makewwn a bit first though.
-    # print "Location:$WINECONF->{'url'}/wwn/$issueNum\n\n"; 
-    print qq~<a href="$WINEHQCONF->{'url'}/?issue=$issueNum">Demo Site</a>~;
+    # redirect to our freshly minted issue
+    print "Location:$WINEHQCONF->{'url'}/wwn/$issueNum\n\n"; 
 }
 
 
 ##
 # Genereate statistics for the covered time period.
 #
-sub stat_gen {
-    # FIXME: Validate form
-    my $dateFrom = $FORM{'dateFrom'};
-    my $dateTo = $FORM{'dateTo'};
-    my $curIssueNum = $FORM{'curIssueNum'};
+sub stats_wwn {
+    # guarantee form values are reasonable
+    my $curIssueNum = forceInt($FORM{'curIssueNum'});
 
     $xmlTempIssueFQN =~ s/XXX/$curIssueNum/;
 
@@ -189,6 +228,11 @@ sub stat_gen {
     }
     my $doc = XML::LibXML->load_xml(location => $xmlTempIssueFQN); 
     my $root = $doc->getDocumentElement();
+
+    # grab the date range of this issue
+    my $issueElement = ($doc->getElementsByTagName('issue'))[0]; 
+    my $dateFrom = forceDate($issueElement->getAttribute('dateFrom'));
+    my $dateTo = forceDate($issueElement->getAttribute('date'));
 
     my $ba = new BugzillaAnalyzer($dateFrom, $dateTo, $DOWNLOAD_DIR); 
     my $bugStatsDoc = $ba->toXML();
@@ -233,13 +277,14 @@ sub new_wwn {
 
     state $inputWidth = 50;
 
-    my $lastMonth = &DateCalc($dateToday, "- 1month");
+    my $lastMonth = DateCalc($dateToday, "- 1month");
     
-    my $dateTo = &UnixDate($dateToday, "%Y-%m-%d %H:%M:%S");
-    my $dateFrom = &UnixDate($lastMonth, "%Y-%m-%d %H:%M:%S");
+    my $dateTo = UnixDate($dateToday, "%Y-%m-%d %H:%M:%S");
+    my $dateFrom = UnixDate($lastMonth, "%Y-%m-%d %H:%M:%S");
 
     print qq~
-        <form action="makewwn.pl?a=create" method="post">
+        <form action="wwncreator.pl?a=create" method="post">
+        <div>
         Author Name:$br
         <input name="name" value="$DEFAULT_AUTHOR" size="$inputWidth" />$br
         Author URL:$br
@@ -254,6 +299,8 @@ sub new_wwn {
         <input name="goal" value="$DEFAULT_GOAL" size="$inputWidth" />$br
         $br
         <input type="submit" value="Generate skeleton WWN" />
+        </div>
+        </form>
      ~;
 }
 
@@ -263,8 +310,9 @@ sub new_wwn {
 # creates the YYYYMMDD_XX.xml for this issue
 #
 sub save_wwn {
-    my $issueNum = $FORM{'curIssueNum'};
-    my $count = $FORM{'count'};
+    # guarantee form values are reasonable
+    my $issueNum = forceInt($FORM{'curIssueNum'});
+    my $count = forceInt($FORM{'count'});
 
     $xmlTempIssueFQN =~ s/XXX/$issueNum/;
 
@@ -352,7 +400,7 @@ sub save_wwn {
 
 ##
 # Creates a news blurb with issue outline.
-# TODO Use xml lib for creating xml.
+# FIXME Use xml lib for creating xml.
 #
 sub createBlurb {
     my ($newsDate, $curIssueNum) = @_;
@@ -380,30 +428,33 @@ sub createBlurb {
 # Calls the MailingListAnalyzer for the list stats.
 #
 sub create_wwn {
-    # TODO: Validate form
     unless ($FORM{'curIssueNum'}) {
+	# FIXME html output and return
         die "No WWN number given.\n";
     }
 
+    # guarantee form values are reasonable
+    my $curIssueNum = forceInt($FORM{'curIssueNum'});
+    my $dateFrom = forceDate($FORM{'dateFrom'});
+    my $dateTo = forceDate($FORM{'dateTo'});
+
+    # these can be whatever 
     my $authorName = $FORM{'name'};
     my $authorURI = $FORM{'authorURI'};
-    my $curIssueNum = $FORM{'curIssueNum'};
     my $mainGoal = $FORM{'goal'};
-    my $dateFrom = $FORM{'dateFrom'};
-    my $dateTo = $FORM{'dateTo'};
-    
+   
     $xmlTempIssueFQN =~ s/XXX/$curIssueNum/;
 
     my $ending = ending($curIssueNum);
-    my $newsDate = &UnixDate($dateTo, '%B %E, %Y');
-    my $dateFromShort = &UnixDate($dateFrom, '%Y/%m/%d');
-    my $dateToShort = &UnixDate($dateTo, '%Y/%m/%d');
+    my $newsDate = UnixDate($dateTo, '%B %E, %Y');
+    my $dateFromShort = UnixDate($dateFrom, '%Y/%m/%d');
+    my $dateToShort = UnixDate($dateTo, '%Y/%m/%d');
 
     my $mla = new MailingListAnalyzer($dateFrom, $dateTo, "$WINEHQCONF->{'archiveURI'}", $DOWNLOAD_DIR);
     my $mailStatsDoc = $mla->toXML();
 
     my ($doc, $root) = createDoc('1.0', 'UTF-8', 'kc', '');
-    addNode($doc, $root, 'title', 'Wine World News');
+    addNode($doc, $root, 'title', 'Wine Traffic');
     addNode($doc, $root, 'author', $authorName, 
         contact => $authorURI);
     addNode($doc, $root, 'issue', '',
@@ -445,14 +496,13 @@ sub create_wwn {
 # provides a new section form at the bottom
 #
 sub edit_wwn {
-    #FIXME: Validate form
     unless ($FORM{'curIssueNum'}) {
+	# FIXME html output and return
         die "No WWN number given.\n";
     }
 
-    my $dateFrom = $FORM{'dateFrom'};
-    my $dateTo = $FORM{'dateTo'};
-    my $issueNum = $FORM{'curIssueNum'}; 
+    # guarantee form values are reasonable
+    my $issueNum = forceInt($FORM{'curIssueNum'});
 
     $xmlTempIssueFQN =~ s/XXX/$issueNum/;
 
@@ -460,9 +510,14 @@ sub edit_wwn {
     unless (-e $xmlTempIssueFQN) {
         copy(getIssuePath($issueNum), $xmlTempIssueFQN);
     }
-    say $xmlTempIssueFQN;
+    say "Using $xmlTempIssueFQN<br />";
     my $doc = XML::LibXML->load_xml(location => $xmlTempIssueFQN); 
     my $root = $doc->getDocumentElement();
+
+    # grab the date range of this issue
+    my $issueElement = ($doc->getElementsByTagName('issue'))[0]; 
+    my $dateFrom = forceDate($issueElement->getAttribute('dateFrom'));
+    my $dateTo = forceDate($issueElement->getAttribute('date'));
 
     #populate the form with existing sections for editing
     my $sectionHTML = '';
@@ -497,7 +552,7 @@ sub edit_wwn {
         }
 
         $sectionHTML .= qq~
-            <hr width="550" color="black" />
+            <hr class="long" />
             Title:$br
             <input name="title$c" value="$title" size="80" />$br
             Subject: $br 
@@ -509,7 +564,7 @@ sub edit_wwn {
             Topic:$br
             <input name="topic$c" value="$topic" size="80" />$br
             Content:$br
-            <textarea rows="25" cols="150" name="content$c">$content</textarea>$br
+            <textarea rows="25" cols="150" name="content$c"><![CDATA[$content]]></textarea>$br
          ~;
 
          ++$c;
@@ -517,11 +572,13 @@ sub edit_wwn {
 
     # links to generate stats to display wwn on demo site
     print qq~
-        <a href="makewwn.pl?a=viewDemo&curIssueNum=$issueNum">View this WWN On Demo Site</a>$br$br
-        <a href="makewwn.pl?a=stat_gen&curIssueNum=$issueNum&dateTo=$dateTo&dateFrom=$dateFrom">Generate Stats</a>
-        <hr width="550" color="black" />
+        <a href="wwncreator.pl?a=view&amp;curIssueNum=$issueNum">Save to winehq and view</a>.$br$br
+        <a href="wwncreator.pl?a=stats&amp;curIssueNum=$issueNum">Generate Stats</a>
+        (About 26MB download avg 4 min wait on a bad day)
+        <hr class="long" />
 
-        <form action="makewwn.pl?a=save&curIssueNum=$issueNum&dateTo=$dateTo&dateFrom=$dateFrom" method="post">
+        <form action="wwncreator.pl?a=save&amp;curIssueNum=$issueNum" method="post">
+        <div>
         <input type="submit" value="Save and Add new section area" />
     ~;
 
@@ -530,7 +587,7 @@ sub edit_wwn {
 
     # new section inputs
     print qq~
-        <hr width="550" color="black" />
+        <hr class="long" />
         New Section:$br
         Title:$br
         <input name="title$c" size="80" />$br
@@ -546,6 +603,8 @@ sub edit_wwn {
         <textarea rows="25" cols="150" name="content$c"></textarea>$br
         <input type="hidden" name="count" value="$c" />$br
         <input type="submit" value="Save and Add new section area" />
+        </div>
+        </form>
     ~;
 }
 
@@ -554,8 +613,7 @@ sub edit_wwn {
 # display a link for each issue that can be edited
 #
 sub choose_wwn {
-    print qq~<a href="makewwn.pl?a=new">Make new WWN</a>$br~;
-
+    my $out = '';
     my @issueFileNames;
     do {
         opendir(my $dir, $WINEHQCONF->{'wwnDir'});
@@ -565,15 +623,26 @@ sub choose_wwn {
     # get rid of . and .. directories
     @issueFileNames = grep( !/^\.*$/, @issueFileNames);
 
+    $out .= qq~
+        <ul class="undec">
+            <li><a href="wwncreator.pl?a=new">Make new WWN</a></li>
+    ~;
+
     foreach my $issueFileName (reverse(sort(@issueFileNames))) {
         $issueFileName =~ /_(\d{1,3})\.xml/;
         my $issueNum = $1;
 
-        print qq~
-            <a href="makewwn.pl?a=edit&curIssueNum=$issueNum">$issueNum</a>
-            (<a href="$WINEHQCONF->{'url'}/?issue=$issueNum">View</a>)$br
+        $out .= qq~
+            <li><a href="wwncreator.pl?a=edit&amp;curIssueNum=$issueNum">$issueNum</a>
+            (<a href="$WINEHQCONF->{'url'}/?issue=$issueNum">View</a>)</li>
         ~;
     }
+
+    $out .= qq~
+        </ul> 
+    ~;
+
+    print $out;
 }
 
 
@@ -581,7 +650,7 @@ sub choose_wwn {
 # translates any url encoded characters back to ascii
 # e.g. %20 to space
 #
-sub parse_form {
+sub parse_env {
     my $buffer = '';
     my %form;
 
@@ -626,3 +695,37 @@ sub ending {
     return $endings[$num];
 }
 
+
+##
+# Forces the input to be returned as an int
+#
+sub forceInt {
+    my ($input) = @_;
+
+    my $int = int($input || 0);
+
+    return $int;
+}
+
+##
+# Forces the input to be returned as a date
+# FIXME: We don't store the time stamp in the xml
+#        So basically a specific hour/min won't work as a constraint.
+#        Need to store it in the date attribute of issue element
+#        in the wwn file.
+#
+sub forceDate {
+    my ($input) = @_;
+
+    my $date = '1900-01-01 00:00:00';
+
+    # 1900-01-01 00:00:00
+    if ($input =~ /(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/) {
+        $date = $1;
+    # 1900/01/01
+    } elsif ($input =~ /(\d{4})\/(\d{2})\/(\d{2})/) {
+	$date = "$1-$2-$3 " . '00:00:00'; 
+    }
+
+    return $date;
+}

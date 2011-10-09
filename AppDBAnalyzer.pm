@@ -115,8 +115,9 @@ my $_updateAppDB = sub {
 
     # winehq updates the sql tarballs at a given time
     # so we have to grab the previous days if it's before that time.
+    # time stamp on file says 6:21 must be in UTC
     my $dateToday = ParseDate('now');
-    my $dateAppDBUpdate = Date_SetTime($dateToday, 6, 21, 0);
+    my $dateAppDBUpdate = Date_SetTime($dateToday, 1, 21, 0);
     my $dateAppDB = $dateToday;
 
     if (Date_Cmp($dateToday, $dateAppDBUpdate) < 1) {
@@ -132,7 +133,7 @@ my $_updateAppDB = sub {
 
     # Download the appdb sql dump if needed
     unless (-e $appDBFQN) {
-        say "Downloading $appDBURI";
+        say "Downloading $appDBURI<br />";
         my $ff = File::Fetch->new(uri => $appDBURI);
         $ff->fetch(to => $dlDir) or die $ff->error;
 
@@ -145,6 +146,8 @@ my $_updateAppDB = sub {
         print STDERR `mysql -u $dbUser -p$dbPw -h $dbHost $dbName < $unzippedAppDBFQN`;
 
         unlink $unzippedAppDBFQN;
+    } else {
+        say "Using cached $appDBFQN<br />";
     }
 };
 

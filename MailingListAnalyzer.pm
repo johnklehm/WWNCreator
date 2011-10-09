@@ -32,6 +32,8 @@ use SugarXML qw(createDoc addNode);
 #        Since we look for the next messages From line to signify
 #        The end of the message.  I'm not sure how to work around
 #        this though :S perhaps. \z matches EOF???
+#        Even givent his caveat we're much more careful now than
+#        the bash script
 # 
 # This is a sample header (START END):
 # START
@@ -102,7 +104,7 @@ my $_parseArchive = sub {
             ++$self->{_listStats}->{totalMessages};
             $self->{_listStats}->{totalSize} += $bodySizeInKB;
 
-            #TODO: Add handling of aliases
+            #FIXME: Add handling of aliases
 
             # saw this author before
             if (exists($self->{_authorStats}->{$author})) {
@@ -153,7 +155,7 @@ my $_analyze = sub {
         
 
         unless (-e $fileLocalFQN) {
-            say "Downloading $downloadURI";
+            say "Downloading $downloadURI<br />";
             my $ff = File::Fetch->new(uri => $downloadURI);
 
             unless ($ff->fetch(to => $dlDir)) {
@@ -162,7 +164,7 @@ my $_analyze = sub {
             }
 
         } else {
-            say "Using cached $fileLocalFQN";
+            say "Using cached $fileLocalFQN<br />";
         }
 
         my $ae = Archive::Extract->new(archive => $fileLocalFQN);
@@ -229,7 +231,7 @@ sub toXML {
     my $size = floor($self->{_listStats}->{totalSize});
     my $contrib = $self->{_listStats}->{totalAuthors};
     my $multiples = $self->{_listStats}->{totalRepeatAuthors};
-    #TODO: last week
+    #FIXME: last week
     my $lastweek = 0;
 
 

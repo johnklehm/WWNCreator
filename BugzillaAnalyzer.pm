@@ -41,9 +41,12 @@ my $_fetchStats = sub {
 
     # Download the bugzilla stats for this date if we need to.
     unless (-e $fileName) {
+        say "Downloading bugzilla data $fileName<br />";
         my $ff = File::Fetch->new(uri => $_getReportURI->($date));
         my $where = $ff->fetch(to => $dlDir) or die $ff->error; 
         rename($where, $fileName);
+    } else {
+        say "Using cached bugzilla data $fileName<br />";
     }
 
     # slurp file contents into a string
@@ -90,14 +93,14 @@ my $_analyze = sub {
     # matches CLOSED and 1800
     my $csvLineRE = '"(\w+)",(\d+)$';
     foreach my $line (@dataTo) {
-       $line =~ /$csvLineRE/ or die "Bad CSV file format\n";
+        $line =~ /$csvLineRE/ or die "Bad CSV file format\n";
         my $category = $1;
         my $numBugs  = $2;
 
         $self->{'_issueEnd'}{$category} = $numBugs;
     }
     foreach my $line (@dataFrom) {
-       $line =~ /$csvLineRE/ or die "Bad CSV file format.\n";
+        $line =~ /$csvLineRE/ or die "Bad CSV file format.\n";
         my $category = $1;
         my $numBugs  = $2;
 
@@ -192,7 +195,7 @@ sub new {
 ##
 # Gives the stats xml structure.
 #
-# TODO: Really should pass the stats back in xml not html and then handle
+# FIXME: Really should pass the stats back in xml not html and then handle
 # the handle the transform on the winehq side of things.
 # 
 # <section>
@@ -215,10 +218,10 @@ sub toXML {
         <p align="center">
             <table border="1" bordercolor="#222222" cellspacing="0" cellpadding="3">
                 <tr>
-                    <th align="center"><b>Category</b></td>
-                    <th align="center"><b>Total Bugs Last Issue</b></td>
-                    <th align="center"><b>Total Bugs This Issue</b></td>
-                    <th align="center"><b>Net Change</b></td>
+                    <th align="center"><b>Category</b></th>
+                    <th align="center"><b>Total Bugs Last Issue</b></th>
+                    <th align="center"><b>Total Bugs This Issue</b></th>
+                    <th align="center"><b>Net Change</b></th>
                 </tr>
     ~;
 
